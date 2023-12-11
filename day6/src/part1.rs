@@ -13,7 +13,7 @@ pub fn parse(i: &str) -> Result<Vec<(u64, u64)>, nom::Err<nom::error::Error<&str
         preceded(pair(tag_no_case("Distance:"), multispace0), numbers)(rest.trim_start())?;
 
     debug_assert_eq!(rest, "");
-    
+
     assert_eq!(
         times.len(),
         distances.len(),

@@ -1,7 +1,9 @@
+#![allow(clippy::wildcard_in_or_patterns)]
+
 use std::{
     cell::OnceCell,
     cmp::Ordering,
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     error::Error,
     fmt::{Display, Write},
     ops::Not,
@@ -11,105 +13,184 @@ use std::{
 static INPUT: &str = include_str!("input.txt");
 
 fn main() {
-    let part1 = part1(INPUT);
-    println!("{part1}");
-}
-
-pub fn part1(input: &str) -> usize {
-    let mut players: Vec<Player> = input
+    let mut players: Vec<Player> = INPUT
         .lines()
         .map(Player::from_str)
         .collect::<Result<_, _>>()
         .unwrap();
 
-    players.sort_by(|x, y| x.part1_cmp(y));
+    players.sort_by(Player::cmp_part1);
 
-    players.iter().enumerate().for_each(|(i, x)| {
-        println!("{i} {x:?}");
-    });
+    let part1 = sum_players(&players);
 
+    println!("{part1}");
+
+    players.sort_by(Player::cmp_part2);
+
+    let part2 = sum_players(&players);
+
+    println!("{part2}");
+}
+
+fn sum_players(players: &[Player]) -> usize {
     players
-        .into_iter()
+        .iter()
         .enumerate()
         .map(|(i, p)| p.bid * (i + 1))
         .sum()
-
-    // todo!()
 }
 
 pub struct Player {
     hand: [Card; 5],
-    hand_type: OnceCell<HandType>,
+    hand_type_part1: OnceCell<HandType>,
+    hand_type_part2: OnceCell<HandType>,
     pub bid: usize,
 }
 
-impl std::fmt::Debug for Player {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let Player {
-            hand: [x1, x2, x3, x4, x5],
-            hand_type,
-            bid,
-        } = self;
-
-        // let x1 = *x1 as usize;
-        // let x2 = *x2 as usize;
-        // let x3 = *x3 as usize;
-
-        if let Some(hand_type) = hand_type.get() {
-            write!(f, "{hand_type:?} [{x1} {x2} {x3} {x4}{x5}] {bid}")
-        } else {
-            write!(f, "[{x1} {x2} {x3} {x4}{x5}] {bid}")
-        }
-    }
-}
-
 impl Player {
-    pub fn part1_cmp(&self, other: &Self) -> Ordering {
-        self.hand_type().cmp(other.hand_type()).then_with(|| {
-            self.hand
-                .into_iter()
-                .zip(other.hand)
-                .find_map(|(x, y)| Some(x.cmp(&y)).filter(|o| o.is_eq().not()))
-                .unwrap_or(Ordering::Equal)
-        })
+    pub fn cmp_part1(&self, other: &Self) -> Ordering {
+        self.hand_type_part1()
+            .cmp(other.hand_type_part1())
+            .then_with(|| self.cmp_hands_with(other, Card::cmp_part1))
     }
 
-    pub fn hand_type(&self) -> &HandType {
-        self.hand_type.get_or_init(|| {
-            let cards = self
+    pub fn cmp_part2(&self, other: &Self) -> Ordering {
+        self.hand_type_part2()
+            .cmp(other.hand_type_part2())
+            .then_with(|| self.cmp_hands_with(other, Card::cmp_part2))
+    }
+
+    fn cmp_hands_with(&self, other: &Player, cmp: impl Fn(&Card, &Card) -> Ordering) -> Ordering {
+        self.hand
+            .into_iter()
+            .zip(other.hand)
+            .find_map(|(x, y)| Some(cmp(&x, &y)).filter(|o| o.is_eq().not()))
+            .unwrap_or(Ordering::Equal)
+    }
+
+    pub fn hand_type_part1(&self) -> &HandType {
+        self.hand_type_part1.get_or_init(|| {
+            let freq = self
                 .hand
-                .into_iter()
-                .fold(HashMap::with_capacity(5), |mut map, c| {
-                    *map.entry(c).or_insert(0) += 1;
-                    map
+                .iter()
+                .fold(HashMap::with_capacity(5), |mut acc, c| {
+                    *acc.entry(c).or_insert(0) += 1;
+
+                    acc
                 });
 
-            match cards.len() {
-                1 => HandType::FiveOfAKind,
-                2 => match cards.values().next().unwrap() {
-                    4 | 1 => HandType::FourOfAKind,
-                    3 | 2 => HandType::FullHouse,
-                    _ => unreachable!(),
-                },
-                3 => {
-                    let mut values = cards.values();
+            let values = {
+                let mut values = freq.into_values().collect::<Vec<_>>();
+                values.sort();
+                values
+            };
 
-                    match values.next().unwrap() {
-                        3 => HandType::ThreeOfAKind,
-                        2 => HandType::TwoPair,
-                        1 => match values.next().unwrap() {
-                            2 => HandType::TwoPair,
-                            1 | 3 => HandType::ThreeOfAKind,
-                            _ => unreachable!(),
-                        },
-                        _ => unreachable!(),
-                    }
-                }
-                4 => HandType::OnePair,
-                5 => HandType::HighCard,
-                _ => unreachable!(),
+            use HandType as HT;
+
+            match values.as_slice() {
+                [5] => HT::FiveOfAKind,
+                [1, 4] => HT::FourOfAKind,
+                [2, 3] => HT::FullHouse,
+                [1, 1, 3] => HT::ThreeOfAKind,
+                [1, 2, 2] => HT::TwoPair,
+                [1, 1, 1, 2] => HT::OnePair,
+                [1, 1, 1, 1, 1] => HT::HighCard,
+                x => unreachable!("{x:?}"),
             }
         })
+    }
+
+    pub fn hand_type_part2(&self) -> &HandType {
+        self.hand_type_part2.get_or_init(|| {
+            let (x1, x2) = (self.hand_type_part2_better(), self.hand_type_manual_part2());
+            assert_eq!(x1, x2);
+
+            x1
+        })
+    }
+
+    fn hand_type_part2_better(&self) -> HandType {
+        let mut freq = self
+            .hand
+            .iter()
+            .fold(HashMap::with_capacity(5), |mut acc, c| {
+                *acc.entry(c).or_insert(0) += 1;
+
+                acc
+            });
+
+        let joker = freq.remove(&Card::J);
+
+        let freq = {
+            let mut freq = freq.into_values().collect::<Vec<_>>();
+            freq.sort();
+
+            if let Some(joker) = joker {
+                if let Some(last) = freq.last_mut() {
+                    *last += joker;
+                } else {
+                    freq.push(joker);
+                }
+            }
+
+            freq
+        };
+
+        use HandType as HT;
+
+        match freq.as_slice() {
+            [5] => HT::FiveOfAKind,
+            [1, 4] => HT::FourOfAKind,
+            [2, 3] => HT::FullHouse,
+            [1, 1, 3] => HT::ThreeOfAKind,
+            [1, 2, 2] => HT::TwoPair,
+            [1, 1, 1, 2] => HT::OnePair,
+            [1, 1, 1, 1, 1] => HT::HighCard,
+            x => unreachable!("{x:?}"),
+        }
+    }
+
+    fn hand_type_manual_part2(&self) -> HandType {
+        let cards = self
+            .hand
+            .iter()
+            .fold(HashMap::with_capacity(5), |mut map, c| {
+                *map.entry(c).or_insert(0) += 1;
+                map
+            });
+
+        let freq_freq: Vec<(u32, (bool, u32))> = cards
+            .into_iter()
+            .fold(BTreeMap::new(), |mut acc, (c, n)| {
+                let (has_j, n) = acc.entry(n).or_default();
+                *has_j |= matches!(c, Card::J);
+                *n += 1;
+                acc
+            })
+            .into_iter()
+            .collect();
+
+        use HandType as HT;
+
+        match freq_freq.as_slice() {
+            [(5, (_, 1))]
+            | [(2, (true, 1)), (3, (false, 1))]
+            | [(1, (true, 1)), (4, (false, 1))]
+            | [(1, (false, 1)), (4, (true, 1))]
+            | [(2, (false, 1)), (3, (true, 1))] => HT::FiveOfAKind,
+            [(1, (false, 1)), (4, (false, 1))]
+            | [(1, (true, 2)), (3, (false, 1))]
+            | [(1, (false, 2)), (3, (true, 1))]
+            | [(1, (false, 1)), (2, (true, 2))] => HT::FourOfAKind,
+            [(2, (false, 1)), (3, (false, 1))] | [(1, (true, 1)), (2, (false, 2))] => HT::FullHouse,
+            [(1, (false, 2)), (3, (false, 1))]
+            | [(1, (true, 3)), (2, (false, 1))]
+            | [(1, (false, 3)), (2, (true, 1))] => HT::ThreeOfAKind,
+            [(1, (false, 1)), (2, (false, 2))] => HT::TwoPair,
+            [(1, (false, 3)), (2, (false, 1))] | [(1, (true, 5))] => HT::OnePair,
+            [(1, (false, 5))] => HT::HighCard,
+            x => unreachable!("{x:?}"),
+        }
     }
 }
 
@@ -132,8 +213,9 @@ impl FromStr for Player {
 
         Ok(Self {
             hand,
-            hand_type: OnceCell::default(),
             bid: bid.parse()?,
+            hand_type_part1: Default::default(),
+            hand_type_part2: Default::default(),
         })
     }
 }
@@ -151,19 +233,35 @@ pub enum HandType {
 
 #[derive(Debug, Hash, Clone, Copy, PartialOrd, Ord, PartialEq, Eq)]
 pub enum Card {
-    Two = 0,
-    Three = 1,
-    Four = 2,
-    Five = 3,
-    Six = 4,
-    Seven = 5,
-    Eight = 6,
-    Nine = 7,
-    T = 9,
-    J = 10,
-    Q = 11,
-    K = 12,
-    A = 13,
+    Two,
+    Three,
+    Four,
+    Five,
+    Six,
+    Seven,
+    Eight,
+    Nine,
+    T,
+    J,
+    Q,
+    K,
+    A,
+}
+
+impl Card {
+    pub fn cmp_part1(&self, other: &Self) -> Ordering {
+        self.cmp(other)
+    }
+
+    pub fn cmp_part2(&self, other: &Self) -> Ordering {
+        if matches!(self, Self::J) || matches!(other, Self::J) {
+            matches!(self, Self::J)
+                .not()
+                .cmp(&matches!(other, Self::J).not())
+        } else {
+            self.cmp_part1(other)
+        }
+    }
 }
 
 impl Display for Card {

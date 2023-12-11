@@ -7,6 +7,7 @@ itertools = "0.12"
 rayon = "1.8"
 divan = "0.1.3"
 jetscii = "0.5.3"
-phf = { version = "0.11.2", feature = ["macros"]}
+phf = { version = "0.11.2", feature = ["macros"] }
 memchr = "2.6.4"
 nom = "7.1.3"
+strum = { version = "0.25", features = ["derive"] }
