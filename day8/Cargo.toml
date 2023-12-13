@@ -8,3 +8,4 @@ edition = "2021"
 [dependencies]
 nom = { workspace = true }
 rayon = { workspace = true }
+num-integer = { workspace = true }

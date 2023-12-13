@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, iter::Iterator};
+use std::{collections::HashMap, iter::Iterator};
 
 use nom::{
     branch::alt,
@@ -15,12 +15,14 @@ type NomError<'a> = nom::Err<nom::error::Error<&'a str>>;
 
 pub type Name = [u8; 3];
 pub type LeftRight = (Name, Name);
-pub type NodeRaw = (Name, LeftRight);
 
-pub fn parse(i: &str) -> Result<(Vec<Direction>, Vec<NodeRaw>), NomError> {
+pub fn parse(i: &str) -> Result<(Vec<Direction>, HashMap<Name, LeftRight>), NomError> {
     let (rest, directions) = parse_directions(i)?;
 
-    let (_, nodes) = all_consuming(separated_list1(newline, parse_node))(rest.trim_start())?;
+    let nodes = all_consuming(separated_list1(newline, parse_node))(rest.trim_start())?
+        .1
+        .into_iter()
+        .collect();
 
     Ok((directions, nodes))
 }
@@ -45,18 +47,20 @@ fn parse_node(i: &str) -> IResult<&str, (Name, LeftRight)> {
 }
 
 fn parse_element(i: &str) -> IResult<&str, [u8; 3]> {
-    let mut iter = combinator::iterator(i, verify(anychar, |c| c.is_ascii_alphanumeric()));
+    let mut iter =
+        combinator::iterator(i, verify(anychar, |c| c.is_ascii_alphanumeric()));
 
     let name: Option<[u8; 3]> = (|| {
         let mut test = iter.into_iter();
         Some([test.next()? as u8, test.next()? as u8, test.next()? as u8])
     })();
 
+    let (rest, ()) = iter.finish()?;
+
     if let Some(name) = name {
-        let (rest, ()) = iter.finish()?;
         Ok((rest, name))
     } else {
-        // Can be improved!!!
+        // Can be improved!
         Err(Err::Incomplete(nom::Needed::Unknown))
     }
 }
