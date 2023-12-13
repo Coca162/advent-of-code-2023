@@ -4,7 +4,7 @@ use nom::{
         complete::{alpha1, digit1, newline, space1},
         streaming::space0,
     },
-    combinator::map_res,
+    combinator::{all_consuming, map_res},
     multi::{many1, separated_list1},
     sequence::{pair, preceded, tuple},
     IResult,
@@ -15,9 +15,7 @@ use crate::{Almanac, MapRange};
 pub fn parse_data(input: &str) -> Result<Almanac, nom::Err<nom::error::Error<&str>>> {
     let (rest, seeds) = parse_seeds(input)?;
 
-    let (rest, mappers) = many1(preceded(pair(newline, newline), parse_mapper))(rest)?;
-
-    debug_assert_eq!(rest, "");
+    let (_, mappers) = all_consuming(many1(preceded(pair(newline, newline), parse_mapper)))(rest)?;
 
     Ok(Almanac { seeds, mappers })
 }

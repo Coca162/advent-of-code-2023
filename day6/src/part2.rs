@@ -1,7 +1,7 @@
 use nom::{
     bytes::complete::tag_no_case,
     character::complete::{digit1, multispace0},
-    combinator::map_res,
+    combinator::{all_consuming, map_res},
     multi::fold_many1,
     sequence::{pair, preceded, terminated},
     IResult,
@@ -9,10 +9,10 @@ use nom::{
 
 pub fn parse(i: &str) -> Result<(u64, u64), nom::Err<nom::error::Error<&str>>> {
     let (rest, times) = preceded(pair(tag_no_case("Time:"), multispace0), number)(i)?;
-    let (rest, distances) =
-        preceded(pair(tag_no_case("Distance:"), multispace0), number)(rest.trim_start())?;
-
-    debug_assert_eq!(rest, "");
+    let (_, distances) = all_consuming(preceded(
+        pair(tag_no_case("Distance:"), multispace0),
+        number,
+    ))(rest.trim_start())?;
 
     Ok((times, distances))
 }
